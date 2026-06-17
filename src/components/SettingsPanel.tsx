@@ -325,4 +325,5 @@ const arePropsEqual = (prevProps: SettingsPanelProps, nextProps: SettingsPanelPr
 const SettingsPanel = memo(SettingsPanelComponent, arePropsEqual);
 SettingsPanel.displayName = 'SettingsPanel';
 
+export { SettingsPanel };
 export default SettingsPanel;
