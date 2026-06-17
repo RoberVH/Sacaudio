@@ -245,5 +245,4 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
   );
 };
 
-export { FileDropzone };
 export default FileDropzone;

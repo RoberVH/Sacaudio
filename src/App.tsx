@@ -12,12 +12,12 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { initializeTheme, setTheme } from './utils/theme';
-import { VideoPlayer, VideoPlayerHandle } from './components/VideoPlayer';
-import { Timeline } from './components/Timeline';
-import { PlaybackControls } from './components/PlaybackControls';
-import { SegmentList } from './components/SegmentList';
-import { SettingsPanel } from './components/SettingsPanel';
-import { FileDropzone } from './components/FileDropzone';
+import VideoPlayer, { VideoPlayerHandle } from './components/VideoPlayer';
+import Timeline from './components/Timeline';
+import PlaybackControls from './components/PlaybackControls';
+import SegmentList from './components/SegmentList';
+import SettingsPanel from './components/SettingsPanel';
+import FileDropzone from './components/FileDropzone';
 import { VideoSegment, AudioFormat, Theme, Language, PlaybackSpeed, ExtractionStatus } from './types';
 import { formatTime } from './utils/time';
 import { 

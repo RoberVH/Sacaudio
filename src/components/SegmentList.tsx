@@ -373,5 +373,4 @@ const arePropsEqual = (prevProps: SegmentListProps, nextProps: SegmentListProps)
 const SegmentList = memo(SegmentListComponent, arePropsEqual);
 SegmentList.displayName = 'SegmentList';
 
-export { SegmentList };
 export default SegmentList;

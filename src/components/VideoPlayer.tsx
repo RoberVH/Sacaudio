@@ -332,5 +332,5 @@ const VideoPlayer: React.FC<VideoPlayerExtendedProps> = forwardRef<VideoPlayerHa
 
 VideoPlayer.displayName = 'VideoPlayer';
 
-export { VideoPlayer, VideoPlayerHandle };
+export { VideoPlayerHandle };
 export default VideoPlayer;
