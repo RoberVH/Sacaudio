@@ -305,4 +305,5 @@ const arePropsEqual = (prevProps: PlaybackControlsProps, nextProps: PlaybackCont
 const PlaybackControls = memo(PlaybackControlsComponent, arePropsEqual);
 PlaybackControls.displayName = 'PlaybackControls';
 
+export { PlaybackControls };
 export default PlaybackControls;

@@ -269,4 +269,5 @@ const TimelineComponent: React.FC<TimelineExtendedProps> = ({
 const Timeline = memo(TimelineComponent);
 Timeline.displayName = 'Timeline';
 
+export { Timeline };
 export default Timeline;
