@@ -2,9 +2,10 @@
  * PlaybackControls Component
  * 
  * Provides playback controls including play/pause, speed, and segment controls
+ * Optimized with React.memo to prevent unnecessary re-renders
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PlaybackSpeed, AudioFormat } from '../types';
 import { Play, Pause, Scissors, Flag, Plus, X } from 'lucide-react';
@@ -30,7 +31,8 @@ interface PlaybackControlsProps {
 const SPEED_OPTIONS: PlaybackSpeed[] = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const FORMAT_OPTIONS: AudioFormat[] = ['wav', 'mp3', 'aac', 'flac', 'ogg'];
 
-export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
+// Memoize the component to prevent unnecessary re-renders
+const PlaybackControlsComponent: React.FC<PlaybackControlsProps> = ({
   isPlaying,
   playbackSpeed,
   currentSegmentStart,
@@ -100,6 +102,12 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
   const handleBaseFilenameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     onBaseFilenameChange(e.target.value);
   }, [onBaseFilenameChange]);
+
+  // Handle clear segment selection
+  const handleClearSegment = useCallback(() => {
+    // This will be handled by the parent component
+    // For now, just a placeholder
+  }, []);
 
   // Check if segment is valid
   const isSegmentValid = currentSegmentStart !== null && 
@@ -184,7 +192,7 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
       {/* Clear segment selection */}
       {isSegmentSet && (
         <button
-          onClick={() => {}}
+          onClick={handleClearSegment}
           className="p-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
           title="Clear segment selection"
         >
@@ -270,5 +278,31 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
     </div>
   );
 };
+
+// Compare props to prevent unnecessary re-renders
+const arePropsEqual = (prevProps: PlaybackControlsProps, nextProps: PlaybackControlsProps) => {
+  return (
+    prevProps.isPlaying === nextProps.isPlaying &&
+    prevProps.playbackSpeed === nextProps.playbackSpeed &&
+    prevProps.currentSegmentStart === nextProps.currentSegmentStart &&
+    prevProps.currentSegmentEnd === nextProps.currentSegmentEnd &&
+    prevProps.duration === nextProps.duration &&
+    prevProps.audioFormat === nextProps.audioFormat &&
+    prevProps.baseFilename === nextProps.baseFilename &&
+    // Compare function references
+    prevProps.onPlayPause === nextProps.onPlayPause &&
+    prevProps.onSetStart === nextProps.onSetStart &&
+    prevProps.onSetEnd === nextProps.onSetEnd &&
+    prevProps.onAddSegment === nextProps.onAddSegment &&
+    prevProps.onPlaySegment === nextProps.onPlaySegment &&
+    prevProps.onSpeedChange === nextProps.onSpeedChange &&
+    prevProps.onFormatChange === nextProps.onFormatChange &&
+    prevProps.onBaseFilenameChange === nextProps.onBaseFilenameChange
+  );
+};
+
+// Export memoized component
+const PlaybackControls = memo(PlaybackControlsComponent, arePropsEqual);
+PlaybackControls.displayName = 'PlaybackControls';
 
 export default PlaybackControls;

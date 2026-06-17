@@ -3,9 +3,10 @@
  * 
  * Displays the list of segments with their status and provides controls
  * for each segment (play, extract, download, delete)
+ * Optimized with React.memo and includes progress bar for extraction
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { VideoSegment, ExtractionStatus } from '../types';
 import { formatTime, generateAudioFilename, sanitizeFilename } from '../utils/time';
@@ -23,8 +24,26 @@ interface SegmentListProps {
   onUpdateSegment: (segment: VideoSegment) => void;
 }
 
-export const SegmentList: React.FC<SegmentListProps> = ({
-  segments,
+// Memoize individual segment row to prevent unnecessary re-renders
+interface SegmentRowProps {
+  segment: VideoSegment;
+  videoFile: File | null;
+  baseFilename: string;
+  onPlaySegment: (start: number, end: number) => void;
+  onExtractAudio: (segmentId: string) => void;
+  onDownloadAudio: (segment: VideoSegment) => void;
+  onDeleteSegment: (segmentId: string) => void;
+  onUpdateSegment: (segment: VideoSegment) => void;
+  getStatusInfo: (status: ExtractionStatus) => {
+    icon: React.ReactNode;
+    color: string;
+    bgColor: string;
+    label: string;
+  };
+}
+
+const SegmentRow: React.FC<SegmentRowProps> = memo(({
+  segment,
   videoFile,
   baseFilename,
   onPlaySegment,
@@ -32,27 +51,24 @@ export const SegmentList: React.FC<SegmentListProps> = ({
   onDownloadAudio,
   onDeleteSegment,
   onUpdateSegment,
+  getStatusInfo,
 }) => {
   const { t } = useTranslation();
-  const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null);
-  const [editingName, setEditingName] = useState('');
-  const [editingFilename, setEditingFilename] = useState('');
-  const [extractingSegments, setExtractingSegments] = useState<Set<string>>(new Set());
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractionProgress, setExtractionProgress] = useState(0);
 
-  // Handle play segment
-  const handlePlaySegment = useCallback((segment: VideoSegment) => {
-    onPlaySegment(segment.startTime, segment.endTime);
-  }, [onPlaySegment]);
+  const statusInfo = getStatusInfo(segment.status);
+  const duration = segment.endTime - segment.startTime;
 
-  // Handle extract audio for a segment
-  const handleExtractAudio = useCallback((segment: VideoSegment) => {
+  // Handle extract audio for this segment
+  const handleExtractAudio = useCallback(() => {
     if (!videoFile) {
       console.error('No video file available for extraction');
       return;
     }
 
-    // Mark as processing
-    setExtractingSegments(prev => new Set(prev).add(segment.id));
+    setIsExtracting(true);
+    setExtractionProgress(0);
     onUpdateSegment({ ...segment, status: 'processing' });
 
     // Start extraction
@@ -60,16 +76,11 @@ export const SegmentList: React.FC<SegmentListProps> = ({
       videoFile,
       segment,
       (progress) => {
-        // Update progress if needed
-        console.log(`Extraction progress for ${segment.id}: ${progress}%`);
+        setExtractionProgress(progress);
       },
       (audioBlob) => {
-        // Extraction complete
-        setExtractingSegments(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(segment.id);
-          return newSet;
-        });
+        setIsExtracting(false);
+        setExtractionProgress(100);
         
         // Update segment with audio blob
         const updatedSegment: VideoSegment = {
@@ -82,13 +93,7 @@ export const SegmentList: React.FC<SegmentListProps> = ({
         onUpdateSegment(updatedSegment);
       },
       (error) => {
-        // Extraction failed
-        setExtractingSegments(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(segment.id);
-          return newSet;
-        });
-        
+        setIsExtracting(false);
         const updatedSegment: VideoSegment = {
           ...segment,
           status: 'error',
@@ -97,10 +102,10 @@ export const SegmentList: React.FC<SegmentListProps> = ({
         onUpdateSegment(updatedSegment);
       }
     );
-  }, [videoFile, onUpdateSegment]);
+  }, [videoFile, segment, onUpdateSegment]);
 
   // Handle download audio
-  const handleDownloadAudio = useCallback((segment: VideoSegment) => {
+  const handleDownloadAudio = useCallback(() => {
     if (!segment.audioBlob) {
       console.error('No audio blob available for download');
       return;
@@ -129,47 +134,117 @@ export const SegmentList: React.FC<SegmentListProps> = ({
 
     // Notify parent
     onDownloadAudio(segment);
-  }, [baseFilename, onDownloadAudio]);
+  }, [baseFilename, segment, onDownloadAudio]);
 
   // Handle delete segment
-  const handleDeleteSegment = useCallback((segmentId: string) => {
+  const handleDeleteSegment = useCallback(() => {
     if (window.confirm(t('segments.confirmDelete'))) {
-      onDeleteSegment(segmentId);
+      onDeleteSegment(segment.id);
     }
-  }, [t, onDeleteSegment]);
+  }, [t, segment.id, onDeleteSegment]);
 
-  // Handle edit segment
-  const handleEditSegment = useCallback((segment: VideoSegment) => {
-    setEditingSegmentId(segment.id);
-    setEditingName(segment.name);
-    setEditingFilename(segment.customFilename || '');
-  }, []);
+  // Handle play segment
+  const handlePlaySegment = useCallback(() => {
+    onPlaySegment(segment.startTime, segment.endTime);
+  }, [onPlaySegment, segment.startTime, segment.endTime]);
 
-  // Handle save edit
-  const handleSaveEdit = useCallback(() => {
-    if (!editingSegmentId) return;
+  return (
+    <tr key={segment.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+      <td className="px-4 py-4 whitespace-nowrap">
+        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+          {segment.name}
+        </span>
+      </td>
+      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+        {formatTime(segment.startTime)}
+      </td>
+      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+        {formatTime(segment.endTime)}
+      </td>
+      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+        {formatTime(duration)}
+      </td>
+      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+        {t('audio.formats', { returnObjects: true })[segment.audioFormat]}
+      </td>
+      <td className="px-4 py-4 whitespace-nowrap">
+        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusInfo.color} ${statusInfo.bgColor}`}>
+          {statusInfo.icon}
+          <span className="ml-1">{statusInfo.label}</span>
+        </span>
+        {/* Progress bar for processing segments */}
+        {segment.status === 'processing' && (
+          <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full mt-1">
+            <div
+              className="h-full bg-primary-500 rounded-full transition-all duration-200"
+              style={{ width: `${extractionProgress}%` }}
+            />
+          </div>
+        )}
+      </td>
+      <td className="px-4 py-4 whitespace-nowrap text-sm">
+        <div className="flex gap-1">
+          {/* Play segment */}
+          <button
+            onClick={handlePlaySegment}
+            className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900 rounded transition-colors"
+            title={t('tooltips.playSegment')}
+          >
+            <Play className="w-4 h-4" />
+          </button>
 
-    const segment = segments.find(s => s.id === editingSegmentId);
-    if (!segment) return;
+          {/* Extract audio */}
+          <button
+            onClick={handleExtractAudio}
+            disabled={segment.status === 'processing' || isExtracting}
+            className="p-1 text-purple-500 hover:text-purple-700 hover:bg-purple-50 dark:hover:bg-purple-900 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title={t('tooltips.extractAudio')}
+          >
+            {segment.status === 'processing' || isExtracting ? (
+              <AlertCircle className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+          </button>
 
-    const updatedSegment: VideoSegment = {
-      ...segment,
-      name: editingName.trim() || segment.name,
-      customFilename: editingFilename.trim() || undefined,
-    };
+          {/* Download audio */}
+          <button
+            onClick={handleDownloadAudio}
+            disabled={segment.status !== 'ready' || !segment.audioBlob}
+            className="p-1 text-green-500 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-900 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title={t('tooltips.download')}
+          >
+            <Download className="w-4 h-4" />
+          </button>
 
-    onUpdateSegment(updatedSegment);
-    setEditingSegmentId(null);
-    setEditingName('');
-    setEditingFilename('');
-  }, [editingSegmentId, editingName, editingFilename, segments, onUpdateSegment]);
+          {/* Delete segment */}
+          <button
+            onClick={handleDeleteSegment}
+            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900 rounded transition-colors"
+            title={t('tooltips.delete')}
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+});
 
-  // Handle cancel edit
-  const handleCancelEdit = useCallback(() => {
-    setEditingSegmentId(null);
-    setEditingName('');
-    setEditingFilename('');
-  }, []);
+SegmentRow.displayName = 'SegmentRow';
+
+// Memoize the main SegmentList component
+const SegmentListComponent: React.FC<SegmentListProps> = ({
+  segments,
+  videoFile,
+  baseFilename,
+  onPlaySegment,
+  onExtractAudio,
+  onDownloadAudio,
+  onDeleteSegment,
+  onUpdateSegment,
+}) => {
+  const { t } = useTranslation();
 
   // Get status icon and color
   const getStatusInfo = useCallback((status: ExtractionStatus) => {
@@ -259,164 +334,43 @@ export const SegmentList: React.FC<SegmentListProps> = ({
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-            {sortedSegments.map((segment) => {
-              const statusInfo = getStatusInfo(segment.status);
-              const duration = segment.endTime - segment.startTime;
-              const isExtracting = extractingSegments.has(segment.id);
-
-              return (
-                <tr key={segment.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    {editingSegmentId === segment.id ? (
-                      <div className="flex gap-1">
-                        <input
-                          type="text"
-                          value={editingName}
-                          onChange={(e) => setEditingName(e.target.value)}
-                          className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
-                          autoFocus
-                        />
-                      </div>
-                    ) : (
-                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {segment.name}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {formatTime(segment.startTime)}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {formatTime(segment.endTime)}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {formatTime(duration)}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {t('audio.formats', { returnObjects: true })[segment.audioFormat]}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusInfo.color} ${statusInfo.bgColor}`}>
-                      {statusInfo.icon}
-                      <span className="ml-1">{statusInfo.label}</span>
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm">
-                    <div className="flex gap-1">
-                      {/* Play segment */}
-                      <button
-                        onClick={() => handlePlaySegment(segment)}
-                        className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900 rounded transition-colors"
-                        title={t('tooltips.playSegment')}
-                      >
-                        <Play className="w-4 h-4" />
-                      </button>
-
-                      {/* Extract audio */}
-                      <button
-                        onClick={() => handleExtractAudio(segment)}
-                        disabled={segment.status === 'processing' || isExtracting}
-                        className="p-1 text-purple-500 hover:text-purple-700 hover:bg-purple-50 dark:hover:bg-purple-900 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        title={t('tooltips.extractAudio')}
-                      >
-                        {segment.status === 'processing' || isExtracting ? (
-                          <AlertCircle className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Download className="w-4 h-4" />
-                        )}
-                      </button>
-
-                      {/* Download audio */}
-                      <button
-                        onClick={() => handleDownloadAudio(segment)}
-                        disabled={segment.status !== 'ready' || !segment.audioBlob}
-                        className="p-1 text-green-500 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-900 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        title={t('tooltips.download')}
-                      >
-                        <Download className="w-4 h-4" />
-                      </button>
-
-                      {/* Edit segment */}
-                      <button
-                        onClick={() => handleEditSegment(segment)}
-                        className="p-1 text-yellow-500 hover:text-yellow-700 hover:bg-yellow-50 dark:hover:bg-yellow-900 rounded transition-colors"
-                        title="Edit segment"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-
-                      {/* Delete segment */}
-                      <button
-                        onClick={() => handleDeleteSegment(segment.id)}
-                        className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900 rounded transition-colors"
-                        title={t('tooltips.delete')}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
+            {sortedSegments.map((segment) => (
+              <SegmentRow
+                key={segment.id}
+                segment={segment}
+                videoFile={videoFile}
+                baseFilename={baseFilename}
+                onPlaySegment={onPlaySegment}
+                onExtractAudio={onExtractAudio}
+                onDownloadAudio={onDownloadAudio}
+                onDeleteSegment={onDeleteSegment}
+                onUpdateSegment={onUpdateSegment}
+                getStatusInfo={getStatusInfo}
+              />
+            ))}
           </tbody>
         </table>
       </div>
-
-      {/* Edit modal */}
-      {editingSegmentId && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-              Edit Segment
-            </h3>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Segment Name
-                </label>
-                <input
-                  type="text"
-                  value={editingName}
-                  onChange={(e) => setEditingName(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  autoFocus
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Custom Filename (optional)
-                </label>
-                <input
-                  type="text"
-                  value={editingFilename}
-                  onChange={(e) => setEditingFilename(e.target.value)}
-                  placeholder="Leave empty to use default naming"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-              </div>
-
-              <div className="flex gap-2 justify-end">
-                <button
-                  onClick={handleCancelEdit}
-                  className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveEdit}
-                  className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
-                >
-                  Save
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
+
+// Compare props to prevent unnecessary re-renders
+const arePropsEqual = (prevProps: SegmentListProps, nextProps: SegmentListProps) => {
+  return (
+    prevProps.segments === nextProps.segments &&
+    prevProps.videoFile === nextProps.videoFile &&
+    prevProps.baseFilename === nextProps.baseFilename &&
+    prevProps.onPlaySegment === nextProps.onPlaySegment &&
+    prevProps.onExtractAudio === nextProps.onExtractAudio &&
+    prevProps.onDownloadAudio === nextProps.onDownloadAudio &&
+    prevProps.onDeleteSegment === nextProps.onDeleteSegment &&
+    prevProps.onUpdateSegment === nextProps.onUpdateSegment
+  );
+};
+
+// Export memoized component
+const SegmentList = memo(SegmentListComponent, arePropsEqual);
+SegmentList.displayName = 'SegmentList';
 
 export default SegmentList;

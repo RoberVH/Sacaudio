@@ -99,6 +99,14 @@ export interface VideoPlayerProps {
   onSegmentPlay: (start: number, end: number) => void;
 }
 
+export interface VideoPlayerHandle {
+  currentTime: number;
+  duration: number;
+  play: () => Promise<void>;
+  pause: () => void;
+  seek: (time: number) => void;
+}
+
 export interface TimelineProps {
   currentTime: number;
   duration: number;

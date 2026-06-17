@@ -2,9 +2,10 @@
  * VideoPlayer Component
  * 
  * Handles video playback, seeking, and time updates
+ * Optimized with requestAnimationFrame for smooth performance
  */
 
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { VideoPlayerProps } from '../types';
 import { formatTime, clamp } from '../utils/time';
 
@@ -12,30 +13,75 @@ interface VideoPlayerExtendedProps extends VideoPlayerProps {
   onLoadedMetadata: (duration: number) => void;
 }
 
-export const VideoPlayer: React.FC<VideoPlayerExtendedProps> = ({
-  videoUrl,
-  isPlaying,
-  currentTime,
-  duration,
-  playbackSpeed,
-  onTimeUpdate,
-  onDurationChange,
-  onSeek,
-  onPlayPause,
-  onSegmentPlay,
-  onLoadedMetadata,
-}) => {
+export interface VideoPlayerHandle {
+  currentTime: number;
+  duration: number;
+  play: () => Promise<void>;
+  pause: () => void;
+  seek: (time: number) => void;
+}
+
+const VideoPlayer: React.FC<VideoPlayerExtendedProps> = forwardRef<VideoPlayerHandle, VideoPlayerExtendedProps>((
+  {
+    videoUrl,
+    isPlaying,
+    currentTime,
+    duration,
+    playbackSpeed,
+    onTimeUpdate,
+    onDurationChange,
+    onSeek,
+    onPlayPause,
+    onSegmentPlay,
+    onLoadedMetadata,
+  },
+  ref
+) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const animationFrameId = useRef<number | null>(null);
+  const lastTimeUpdate = useRef<number>(0);
+  const touchStartX = useRef<number | null>(null);
 
-  // Handle video time updates
+  // Expose video methods via ref
+  useImperativeHandle(ref, () => ({
+    get currentTime() {
+      return videoRef.current?.currentTime ?? 0;
+    },
+    get duration() {
+      return videoRef.current?.duration ?? 0;
+    },
+    play: () => {
+      return videoRef.current?.play() ?? Promise.resolve();
+    },
+    pause: () => {
+      videoRef.current?.pause();
+    },
+    seek: (time: number) => {
+      if (videoRef.current) {
+        videoRef.current.currentTime = clamp(time, 0, videoRef.current.duration);
+      }
+    },
+  }));
+
+  // Handle video time updates with requestAnimationFrame
   const handleTimeUpdate = useCallback(() => {
-    if (videoRef.current) {
+    if (!videoRef.current) return;
+
+    const now = Date.now();
+    // Throttle time updates to 60fps max (every ~16ms)
+    if (now - lastTimeUpdate.current >= 16) {
+      lastTimeUpdate.current = now;
       const newTime = videoRef.current.currentTime;
+      
+      // Only update if the difference is significant to avoid jitter
       if (Math.abs(newTime - currentTime) > 0.1) {
         onTimeUpdate(newTime);
       }
     }
+
+    // Continue the animation frame loop
+    animationFrameId.current = requestAnimationFrame(handleTimeUpdate);
   }, [currentTime, onTimeUpdate]);
 
   // Handle duration change
@@ -54,7 +100,7 @@ export const VideoPlayer: React.FC<VideoPlayerExtendedProps> = ({
     onPlayPause();
   }, [onPlayPause]);
 
-  // Handle video seek
+  // Handle video seek via click
   const handleSeek = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!videoRef.current || !containerRef.current || duration <= 0) return;
 
@@ -66,6 +112,35 @@ export const VideoPlayer: React.FC<VideoPlayerExtendedProps> = ({
     videoRef.current.currentTime = newTime;
     onSeek(newTime);
   }, [duration, onSeek]);
+
+  // Handle touch start for swipe gestures
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  }, []);
+
+  // Handle touch move for swipe seeking
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!videoRef.current || !containerRef.current || !touchStartX.current || duration <= 0) return;
+
+    const touchX = e.touches[0].clientX;
+    const diff = touchStartX.current - touchX;
+
+    // Only trigger swipe if horizontal movement is significant
+    if (Math.abs(diff) > 10) {
+      // Calculate seek amount based on screen width
+      const seekAmount = (diff / window.innerWidth) * 30; // 30 seconds per screen width
+      const newTime = clamp(videoRef.current.currentTime + seekAmount, 0, duration);
+      
+      videoRef.current.currentTime = newTime;
+      onSeek(newTime);
+      touchStartX.current = touchX;
+    }
+  }, [duration, onSeek]);
+
+  // Handle touch end
+  const handleTouchEnd = useCallback(() => {
+    touchStartX.current = null;
+  }, []);
 
   // Handle keyboard shortcuts
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -139,11 +214,28 @@ export const VideoPlayer: React.FC<VideoPlayerExtendedProps> = ({
     }
   }, [videoUrl, duration, currentTime]);
 
+  // Start animation frame loop when video is playing
+  useEffect(() => {
+    if (isPlaying && videoRef.current) {
+      animationFrameId.current = requestAnimationFrame(handleTimeUpdate);
+    }
+
+    return () => {
+      if (animationFrameId.current) {
+        cancelAnimationFrame(animationFrameId.current);
+        animationFrameId.current = null;
+      }
+    };
+  }, [isPlaying, handleTimeUpdate]);
+
   // Clean up on unmount
   useEffect(() => {
     return () => {
       if (videoRef.current) {
         videoRef.current.pause();
+      }
+      if (animationFrameId.current) {
+        cancelAnimationFrame(animationFrameId.current);
       }
     };
   }, []);
@@ -175,10 +267,7 @@ export const VideoPlayer: React.FC<VideoPlayerExtendedProps> = ({
     };
   }, []);
 
-  // Expose playSegment to parent via ref
-  useEffect(() => {
-    onSegmentPlay = playSegment;
-  }, [playSegment]);
+
 
   if (!videoUrl) {
     return (
@@ -196,6 +285,9 @@ export const VideoPlayer: React.FC<VideoPlayerExtendedProps> = ({
       className="relative bg-black rounded-lg overflow-hidden cursor-pointer"
       onClick={handleVideoClick}
       onDoubleClick={handleSeek}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
       <video
         ref={videoRef}
@@ -236,6 +328,8 @@ export const VideoPlayer: React.FC<VideoPlayerExtendedProps> = ({
       )}
     </div>
   );
-};
+});
+
+VideoPlayer.displayName = 'VideoPlayer';
 
 export default VideoPlayer;
