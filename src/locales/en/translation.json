@@ -1,0 +1,130 @@
+{
+  "app": {
+    "title": "Sacaudio - Video Segment Audio Extractor",
+    "description": "Extract audio from video segments with high quality"
+  },
+  "header": {
+    "title": "Sacaudio"
+  },
+  "video": {
+    "load": "Load Video",
+    "dropzone": "Drag & drop video file here, or click to browse",
+    "supportedFormats": "Supported: MP4, MKV, MOV, AVI, WebM",
+    "noFile": "No video file selected",
+    "loading": "Loading video...",
+    "error": "Error loading video"
+  },
+  "controls": {
+    "play": "Play",
+    "pause": "Pause",
+    "playSegment": "Play Segment",
+    "setStart": "Set Start",
+    "setEnd": "Set End",
+    "addSegment": "Add Segment",
+    "extractAudio": "Extract Audio",
+    "extractAll": "Extract All"
+  },
+  "timeline": {
+    "currentTime": "Current: {{time}}",
+    "duration": "Duration: {{time}}",
+    "segmentStart": "Start: {{time}}",
+    "segmentEnd": "End: {{time}}",
+    "segmentDuration": "Duration: {{time}}"
+  },
+  "speed": {
+    "label": "Playback Speed",
+    "options": {
+      "0.5": "0.5x",
+      "0.75": "0.75x",
+      "1": "1x",
+      "1.25": "1.25x",
+      "1.5": "1.5x",
+      "2": "2x"
+    }
+  },
+  "segments": {
+    "title": "Segments",
+    "empty": "No segments added yet",
+    "name": "Segment Name",
+    "start": "Start",
+    "end": "End",
+    "duration": "Duration",
+    "format": "Format",
+    "status": "Status",
+    "actions": "Actions",
+    "play": "Play",
+    "extract": "Extract",
+    "download": "Download",
+    "delete": "Delete",
+    "confirmDelete": "Are you sure you want to delete this segment?",
+    "statuses": {
+      "pending": "Pending",
+      "processing": "Processing...",
+      "ready": "Ready",
+      "error": "Error"
+    }
+  },
+  "audio": {
+    "format": "Audio Format",
+    "quality": "Audio Quality",
+    "baseFilename": "Base Filename",
+    "customFilename": "Custom Filename",
+    "formats": {
+      "wav": "WAV (Uncompressed)",
+      "mp3": "MP3",
+      "aac": "AAC/M4A",
+      "flac": "FLAC",
+      "ogg": "OGG"
+    },
+    "qualityOptions": {
+      "original": "Original (No Re-encode)",
+      "high": "High Quality",
+      "medium": "Medium Quality",
+      "low": "Low Quality"
+    },
+    "preserveQuality": "Preserve original audio quality when possible",
+    "transcodingWarning": "Warning: This format requires transcoding, which may reduce quality"
+  },
+  "settings": {
+    "title": "Settings",
+    "theme": "Theme",
+    "language": "Language",
+    "themes": {
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    },
+    "languages": {
+      "en": "English",
+      "es": "Español",
+      "pt": "Português"
+    }
+  },
+  "buttons": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "clear": "Clear",
+    "apply": "Apply"
+  },
+  "messages": {
+    "success": "Success!",
+    "error": "Error",
+    "warning": "Warning",
+    "processing": "Processing...",
+    "complete": "Complete",
+    "invalidSegment": "Invalid segment: End time must be greater than start time",
+    "noSegments": "No segments to extract",
+    "extractionComplete": "Audio extraction complete!",
+    "extractionFailed": "Audio extraction failed",
+    "fileSaved": "File saved successfully"
+  },
+  "tooltips": {
+    "setStart": "Set the start time of the segment at current position",
+    "setEnd": "Set the end time of the segment at current position",
+    "addSegment": "Add the current segment to the list",
+    "playSegment": "Play only the selected segment",
+    "extractAudio": "Extract audio from this segment",
+    "download": "Download the extracted audio file",
+    "delete": "Delete this segment"
+  }
+}
