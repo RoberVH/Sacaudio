@@ -9,31 +9,55 @@
  * - Theme and language settings
  */
 
-import React, { useEffect, useCallback, useState } from 'react';
+import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useAppState } from './hooks/useAppState';
 import { initializeTheme, setTheme } from './utils/theme';
-import { VideoPlayer } from './components/VideoPlayer';
+import { VideoPlayer, VideoPlayerHandle } from './components/VideoPlayer';
 import { Timeline } from './components/Timeline';
 import { PlaybackControls } from './components/PlaybackControls';
 import { SegmentList } from './components/SegmentList';
 import { SettingsPanel } from './components/SettingsPanel';
 import { FileDropzone } from './components/FileDropzone';
-import { VideoSegment, ExtractionStatus } from './types';
+import { VideoSegment, AudioFormat, Theme, Language, PlaybackSpeed, ExtractionStatus } from './types';
 import { formatTime } from './utils/time';
-import { extractAudioSegment, getVideoInfo, isFFmpegLoaded, getFFmpegLoadingStatus } from './services/ffmpegService';
-import { AlertCircle, CheckCircle, Info } from 'lucide-react';
+import { 
+  extractAudioSegment, 
+  getVideoInfo, 
+  isFFmpegLoaded, 
+  getFFmpegLoadingStatus,
+  ffmpegService 
+} from './services/ffmpegService';
+import useAppStore from './store/useAppStore';
+import { AlertCircle, CheckCircle, Info, X } from 'lucide-react';
 
 // Initialize theme on app load
 initializeTheme();
 
 const App: React.FC = () => {
   const { t } = useTranslation();
+  
+  // Use Zustand store
   const {
-    state,
+    videoFile,
+    videoUrl,
+    isPlaying,
+    currentTime,
+    duration,
+    playbackSpeed,
+    segments,
+    currentSegmentStart,
+    currentSegmentEnd,
+    baseFilename,
+    audioFormat,
+    theme,
+    language,
+    isLoading,
+    error,
     setVideoFile,
     togglePlay,
     setPlaybackSpeed,
+    setCurrentTime,
+    setDuration,
     setSegmentStart,
     setSegmentEnd,
     addSegment,
@@ -49,57 +73,88 @@ const App: React.FC = () => {
     updateSegmentWithAudio,
     clearError,
     setLoading,
-    createSegment,
-  } = useAppState();
+    resetSegmentSelection,
+  } = useAppStore();
 
   const [ffmpegLoading, setFfmpegLoading] = useState(false);
   const [ffmpegLoaded, setFfmpegLoaded] = useState(false);
   const [showNotification, setShowNotification] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const videoRef = useRef<VideoPlayerHandle>(null);
 
   // Initialize FFmpeg status
   useEffect(() => {
     setFfmpegLoading(getFFmpegLoadingStatus());
     setFfmpegLoaded(isFFmpegLoaded());
+    
+    // Preload FFmpeg in background
+    const timer = setTimeout(() => {
+      ffmpegService.preloadFFmpeg();
+    }, 2000);
+    
+    return () => clearTimeout(timer);
   }, []);
 
   // Sync theme with document
   useEffect(() => {
-    setTheme(state.theme);
-  }, [state.theme]);
+    setTheme(theme);
+  }, [theme]);
 
   // Handle video time updates
   const handleTimeUpdate = useCallback((time: number) => {
-    // Update current time in state
-    // This is handled by the VideoPlayer component
-  }, []);
+    setCurrentTime(time);
+  }, [setCurrentTime]);
 
   // Handle duration change
   const handleDurationChange = useCallback((duration: number) => {
-    // Duration is updated by the VideoPlayer component
-  }, []);
+    setDuration(duration);
+  }, [setDuration]);
 
   // Handle seek
   const handleSeek = useCallback((time: number) => {
-    // Seek is handled by the VideoPlayer component
-  }, []);
+    setCurrentTime(time);
+    if (videoRef.current) {
+      videoRef.current.currentTime = time;
+    }
+  }, [setCurrentTime]);
 
   // Handle play segment
   const handlePlaySegment = useCallback((start: number, end: number) => {
-    // This will be implemented in the VideoPlayer
-    console.log(`Playing segment from ${formatTime(start)} to ${formatTime(end)}`);
+    if (videoRef.current) {
+      videoRef.current.currentTime = start;
+      videoRef.current.play().catch(error => {
+        console.error('Error playing segment:', error);
+      });
+
+      // Set up event listener for segment end
+      const handleSegmentEnd = () => {
+        if (videoRef.current && videoRef.current.currentTime >= end) {
+          videoRef.current.pause();
+          videoRef.current.removeEventListener('timeupdate', handleSegmentEnd);
+        }
+      };
+
+      videoRef.current.addEventListener('timeupdate', handleSegmentEnd);
+
+      // Clean up after segment ends
+      return () => {
+        if (videoRef.current) {
+          videoRef.current.removeEventListener('timeupdate', handleSegmentEnd);
+        }
+      };
+    }
   }, []);
 
   // Handle extract audio for a segment
   const handleExtractAudio = useCallback((segmentId: string) => {
-    const segment = state.segments.find(s => s.id === segmentId);
-    if (!segment || !state.videoFile) return;
+    const segment = segments.find(s => s.id === segmentId);
+    if (!segment || !videoFile) return;
 
     // Mark as processing
     updateSegmentStatus(segmentId, 'processing');
 
     // Start extraction
     extractAudioSegment(
-      state.videoFile,
+      videoFile,
       segment,
       (progress) => {
         console.log(`Extraction progress: ${progress}%`);
@@ -135,7 +190,7 @@ const App: React.FC = () => {
         }, 5000);
       }
     );
-  }, [state.segments, state.videoFile, updateSegmentStatus, updateSegmentWithAudio, t]);
+  }, [segments, videoFile, updateSegmentStatus, updateSegmentWithAudio, t]);
 
   // Handle download audio
   const handleDownloadAudio = useCallback((segment: VideoSegment) => {
@@ -146,7 +201,7 @@ const App: React.FC = () => {
     const a = document.createElement('a');
     a.href = url;
     a.download = segment.customFilename || 
-      `${state.baseFilename}_${formatTime(segment.startTime).replace(/:/g, '-')}_to_${formatTime(segment.endTime).replace(/:/g, '-')}.${segment.audioFormat}`;
+      `${baseFilename}_${formatTime(segment.startTime).replace(/:/g, '-')}_to_${formatTime(segment.endTime).replace(/:/g, '-')}.${segment.audioFormat}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -161,21 +216,15 @@ const App: React.FC = () => {
     setTimeout(() => {
       setShowNotification(null);
     }, 3000);
-  }, [state.baseFilename, t]);
-
-  // Handle update segment
-  const handleUpdateSegment = useCallback((segment: VideoSegment) => {
-    // Update segment in state
-    // This is handled by the SegmentList component
-  }, []);
+  }, [baseFilename, t]);
 
   // Handle theme change
-  const handleThemeChange = useCallback((theme: 'light' | 'dark' | 'system') => {
+  const handleThemeChange = useCallback((theme: Theme) => {
     setAppTheme(theme);
   }, [setAppTheme]);
 
   // Handle language change
-  const handleLanguageChange = useCallback((language: 'en' | 'es' | 'pt') => {
+  const handleLanguageChange = useCallback((language: Language) => {
     setLanguage(language);
   }, [setLanguage]);
 
@@ -185,7 +234,7 @@ const App: React.FC = () => {
   }, [setBaseFilename]);
 
   // Handle audio format change
-  const handleAudioFormatChange = useCallback((format: 'wav' | 'mp3' | 'aac' | 'flac' | 'ogg') => {
+  const handleAudioFormatChange = useCallback((format: AudioFormat) => {
     setAudioFormat(format);
   }, [setAudioFormat]);
 
@@ -195,7 +244,17 @@ const App: React.FC = () => {
   }, [setVideoFile]);
 
   // Check if we have a video loaded
-  const hasVideo = state.videoUrl !== null;
+  const hasVideo = videoUrl !== null;
+
+  // Update FFmpeg loading status
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setFfmpegLoading(getFFmpegLoadingStatus());
+      setFfmpegLoaded(isFFmpegLoaded());
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
@@ -270,17 +329,17 @@ const App: React.FC = () => {
           <FileDropzone
             onFileSelect={setVideoFile}
             onFileRemove={handleRemoveVideo}
-            videoFile={state.videoFile}
-            isLoading={state.isLoading}
+            videoFile={videoFile}
+            isLoading={isLoading}
           />
         </div>
 
         {/* Error message */}
-        {state.error && (
+        {error && (
           <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center justify-between">
             <div className="flex items-center gap-2">
               <AlertCircle className="w-5 h-5 text-red-500" />
-              <span className="text-red-700 dark:text-red-400">{state.error}</span>
+              <span className="text-red-700 dark:text-red-400">{error}</span>
             </div>
             <button
               onClick={clearError}
@@ -298,40 +357,30 @@ const App: React.FC = () => {
             {/* Video player */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
               <VideoPlayer
-                videoUrl={state.videoUrl}
-                isPlaying={state.isPlaying}
-                currentTime={state.currentTime}
-                duration={state.duration}
-                playbackSpeed={state.playbackSpeed}
-                onTimeUpdate={(time) => {
-                  // Update current time in state
-                  // This is handled by the VideoPlayer component
-                }}
-                onDurationChange={(duration) => {
-                  // Update duration in state
-                }}
-                onSeek={(time) => {
-                  // Seek to time
-                }}
+                ref={videoRef}
+                videoUrl={videoUrl}
+                isPlaying={isPlaying}
+                currentTime={currentTime}
+                duration={duration}
+                playbackSpeed={playbackSpeed}
+                onTimeUpdate={handleTimeUpdate}
+                onDurationChange={handleDurationChange}
+                onSeek={handleSeek}
                 onPlayPause={togglePlay}
                 onSegmentPlay={handlePlaySegment}
-                onLoadedMetadata={(duration) => {
-                  // Duration loaded
-                }}
+                onLoadedMetadata={handleDurationChange}
               />
             </div>
 
             {/* Timeline */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
               <Timeline
-                currentTime={state.currentTime}
-                duration={state.duration}
-                onSeek={(time) => {
-                  // Update current time
-                }}
-                segments={state.segments}
-                currentSegmentStart={state.currentSegmentStart}
-                currentSegmentEnd={state.currentSegmentEnd}
+                currentTime={currentTime}
+                duration={duration}
+                onSeek={handleSeek}
+                segments={segments}
+                currentSegmentStart={currentSegmentStart}
+                currentSegmentEnd={currentSegmentEnd}
                 onSetStart={setSegmentStart}
                 onSetEnd={setSegmentEnd}
               />
@@ -339,20 +388,20 @@ const App: React.FC = () => {
 
             {/* Playback controls */}
             <PlaybackControls
-              isPlaying={state.isPlaying}
-              playbackSpeed={state.playbackSpeed}
-              currentSegmentStart={state.currentSegmentStart}
-              currentSegmentEnd={state.currentSegmentEnd}
-              duration={state.duration}
-              audioFormat={state.audioFormat}
-              baseFilename={state.baseFilename}
+              isPlaying={isPlaying}
+              playbackSpeed={playbackSpeed}
+              currentSegmentStart={currentSegmentStart}
+              currentSegmentEnd={currentSegmentEnd}
+              duration={duration}
+              audioFormat={audioFormat}
+              baseFilename={baseFilename}
               onPlayPause={togglePlay}
               onSetStart={setSegmentStart}
               onSetEnd={setSegmentEnd}
               onAddSegment={addSegment}
               onPlaySegment={() => {
-                if (state.currentSegmentStart !== null && state.currentSegmentEnd !== null) {
-                  handlePlaySegment(state.currentSegmentStart, state.currentSegmentEnd);
+                if (currentSegmentStart !== null && currentSegmentEnd !== null) {
+                  handlePlaySegment(currentSegmentStart, currentSegmentEnd);
                 }
               }}
               onSpeedChange={setPlaybackSpeed}
@@ -364,17 +413,14 @@ const App: React.FC = () => {
           {/* Right column - Segment list */}
           <div className="lg:col-span-1">
             <SegmentList
-              segments={state.segments}
-              videoFile={state.videoFile}
-              baseFilename={state.baseFilename}
+              segments={segments}
+              videoFile={videoFile}
+              baseFilename={baseFilename}
               onPlaySegment={handlePlaySegment}
               onExtractAudio={handleExtractAudio}
               onDownloadAudio={handleDownloadAudio}
               onDeleteSegment={deleteSegment}
-              onUpdateSegment={(segment) => {
-                // Update segment in state
-                // This would need to be implemented in the state management
-              }}
+              onUpdateSegment={updateSegmentName}
             />
           </div>
         </div>
@@ -382,10 +428,10 @@ const App: React.FC = () => {
 
       {/* Settings panel */}
       <SettingsPanel
-        theme={state.theme}
-        language={state.language}
-        baseFilename={state.baseFilename}
-        audioFormat={state.audioFormat}
+        theme={theme}
+        language={language}
+        baseFilename={baseFilename}
+        audioFormat={audioFormat}
         onThemeChange={handleThemeChange}
         onLanguageChange={handleLanguageChange}
         onBaseFilenameChange={handleBaseFilenameChange}

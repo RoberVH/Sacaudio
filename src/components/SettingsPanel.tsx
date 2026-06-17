@@ -2,9 +2,10 @@
  * SettingsPanel Component
  * 
  * Provides settings for theme, language, and other preferences
+ * Optimized with React.memo to prevent unnecessary re-renders
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SettingsPanelProps, Theme, Language, AudioFormat } from '../types';
 import { Moon, Sun, Globe, Languages, FileText, Settings as SettingsIcon } from 'lucide-react';
@@ -13,7 +14,8 @@ const THEME_OPTIONS: Theme[] = ['light', 'dark', 'system'];
 const LANGUAGE_OPTIONS: Language[] = ['en', 'es', 'pt'];
 const FORMAT_OPTIONS: AudioFormat[] = ['wav', 'mp3', 'aac', 'flac', 'ogg'];
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({
+// Memoize the component to prevent unnecessary re-renders
+const SettingsPanelComponent: React.FC<SettingsPanelProps> = ({
   theme,
   language,
   baseFilename,
@@ -87,12 +89,31 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     return t('audio.formats', { returnObjects: true })[audioFormat];
   }, [audioFormat, t]);
 
+  // Close menus when clicking outside
+  const handleClickOutside = useCallback((e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (!target.closest('.settings-menu') && !target.closest('.settings-button')) {
+      setShowThemeMenu(false);
+      setShowLanguageMenu(false);
+      setShowFormatMenu(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showThemeMenu || showLanguageMenu || showFormatMenu) {
+      document.addEventListener('click', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [showThemeMenu, showLanguageMenu, showFormatMenu, handleClickOutside]);
+
   return (
     <div className="fixed bottom-4 right-4 z-50">
       {/* Settings toggle button */}
       <button
         onClick={toggleSettings}
-        className="p-3 bg-primary-500 text-white rounded-full shadow-lg hover:bg-primary-600 transition-colors"
+        className="p-3 bg-primary-500 text-white rounded-full shadow-lg hover:bg-primary-600 transition-colors settings-button"
         title={t('settings.title')}
       >
         <SettingsIcon className="w-6 h-6" />
@@ -100,7 +121,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
       {/* Settings panel */}
       {isOpen && (
-        <div className="absolute bottom-full right-0 mb-4 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="absolute bottom-full right-0 mb-4 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden settings-menu">
           <div className="p-4 border-b border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
               <SettingsIcon className="w-5 h-5" />
@@ -285,5 +306,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     </div>
   );
 };
+
+// Compare props to prevent unnecessary re-renders
+const arePropsEqual = (prevProps: SettingsPanelProps, nextProps: SettingsPanelProps) => {
+  return (
+    prevProps.theme === nextProps.theme &&
+    prevProps.language === nextProps.language &&
+    prevProps.baseFilename === nextProps.baseFilename &&
+    prevProps.audioFormat === nextProps.audioFormat &&
+    prevProps.onThemeChange === nextProps.onThemeChange &&
+    prevProps.onLanguageChange === nextProps.onLanguageChange &&
+    prevProps.onBaseFilenameChange === nextProps.onBaseFilenameChange &&
+    prevProps.onAudioFormatChange === nextProps.onAudioFormatChange
+  );
+};
+
+// Export memoized component
+const SettingsPanel = memo(SettingsPanelComponent, arePropsEqual);
+SettingsPanel.displayName = 'SettingsPanel';
 
 export default SettingsPanel;

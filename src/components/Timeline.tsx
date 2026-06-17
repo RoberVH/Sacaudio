@@ -2,9 +2,10 @@
  * Timeline Component
  * 
  * Provides a timeline slider for video navigation with segment markers
+ * Optimized with React.memo to prevent unnecessary re-renders
  */
 
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback, useState, memo } from 'react';
 import { TimelineProps } from '../types';
 import { formatTime, clamp } from '../utils/time';
 import { useTranslation } from 'react-i18next';
@@ -22,7 +23,8 @@ interface TimelineExtendedProps extends TimelineProps {
   onSetEnd: () => void;
 }
 
-export const Timeline: React.FC<TimelineExtendedProps> = ({
+// Memoize the Timeline component to prevent unnecessary re-renders
+const TimelineComponent: React.FC<TimelineExtendedProps> = ({
   currentTime,
   duration,
   onSeek,
@@ -165,6 +167,9 @@ export const Timeline: React.FC<TimelineExtendedProps> = ({
           const segmentEndPos = timeToPosition(segment.endTime);
           const segmentWidth = segmentEndPos - segmentStartPos;
 
+          // Only render if segment is visible
+          if (segmentWidth <= 0) return null;
+
           return (
             <div
               key={segment.id}
@@ -179,7 +184,7 @@ export const Timeline: React.FC<TimelineExtendedProps> = ({
         })}
 
         {/* Current segment selection */}
-        {startPosition !== null && endPosition !== null && (
+        {startPosition !== null && endPosition !== null && endPosition > startPosition && (
           <div
             className="absolute h-full bg-blue-400 opacity-80 rounded-full border-2 border-white"
             style={{
@@ -259,5 +264,9 @@ export const Timeline: React.FC<TimelineExtendedProps> = ({
     </div>
   );
 };
+
+// Export memoized component
+const Timeline = memo(TimelineComponent);
+Timeline.displayName = 'Timeline';
 
 export default Timeline;
