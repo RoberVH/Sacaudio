@@ -5,7 +5,7 @@
  * Optimized with React.memo to prevent unnecessary re-renders
  */
 
-import React, { useCallback, useState, memo } from 'react';
+import React, { useCallback, useState, useEffect, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SettingsPanelProps, Theme, Language, AudioFormat } from '../types';
 import { Moon, Sun, Globe, Languages, FileText, Settings as SettingsIcon } from 'lucide-react';
